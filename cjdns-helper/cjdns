@@ -1,0 +1,78 @@
+#!/bin/bash
+#save this text to /etc/init.d/cjdns
+#make it executable with chmod +x /etc/init.d/cjdns
+#run: update-rc.d cjdns defaults
+
+
+if [ "$EUID" -ne 0 ]
+  then echo "Please run as root"
+  exit
+fi
+
+start () {
+	if [ `cat /opt/cjdns/runlock` == 1 ]; then
+		echo "cjdns instance may already be running, waiting to verify"
+		sleep 2
+		if ! ps -p `cat /opt/cjdns/pid` > /dev/null; then
+			echo 0 > /opt/cjdns/runlock
+			if [ $retry < 2 ];then
+				retry=$retry + 1
+				echo "trying again..."
+				start
+			else
+				echo "cjdns start failed"
+			fi
+		else
+			"cjdns instance already running"
+		fi
+	else
+		nohup bash /opt/cjdns/run.sh &> /dev/null &
+		echo 1 > /opt/cjdns/runlock
+		echo "cjdns instance started"
+	fi
+}
+
+stop () {
+	if [ -z `cat /opt/cjdns/pid` ]; then
+		echo "cjdns instance already stopped"
+	else
+		pid=`cat /opt/cjdns/pid`
+		echo $pid
+		#cid=`pgrep -P $pid`
+		#echo $cid
+		#kill -SIGTERM $pid
+		#kill -9 $cid
+		#fuck it, lets use killall
+		killall cjdroute
+		echo "" > /opt/cjdns/pid
+		echo 0 > /opt/cjdns/runlock
+	fi
+}
+
+status () {
+	if [ `cat /opt/cjdns/runlock` == 1 ]; then
+		echo "cjdns instance is running"
+		cat /opt/cjdns/pid
+	else
+		echo "cjdns instance is not running"
+	fi
+}
+
+case $1 in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		stop
+		start
+		;;
+	status)
+		status
+		;;
+	*)
+		echo "usage: cjdns {start|stop|restart|status}"
+		;;
+esac
